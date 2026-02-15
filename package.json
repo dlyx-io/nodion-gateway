@@ -1,0 +1,45 @@
+{
+  "name": "nodion-gateway",
+  "version": "1.0.0",
+  "description": "RBAC proxy for the Nodion PaaS API — issue scoped API keys with fine-grained permissions",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate:sqlite": "drizzle-kit generate --config=drizzle-sqlite.config.ts",
+    "db:generate:pg": "drizzle-kit generate --config=drizzle-pg.config.ts"
+  },
+  "keywords": [
+    "nodion",
+    "rbac",
+    "api-gateway",
+    "proxy"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "@hono/swagger-ui": "^0.5.0",
+    "@hono/zod-openapi": "^0.18.4",
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^17.3.1",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.7.4",
+    "nanoid": "^5.0.9",
+    "pg": "^8.18.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/pg": "^8.16.0",
+    "drizzle-kit": "^0.31.9",
+    "tsup": "^8.3.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
