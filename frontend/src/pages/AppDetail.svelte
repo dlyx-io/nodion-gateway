@@ -396,6 +396,21 @@
     success(`Exported ${data.length} variables`);
   }
 
+  async function copyEnvVars() {
+    const data = envVars.map((v: any) => ({
+      env_key: v.env_key,
+      env_val: v.env_val,
+      buildtime: !!v.buildtime,
+    }));
+    const json = JSON.stringify(data, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      success(`${data.length} variables copied to clipboard`);
+    } catch {
+      toastError('Failed to copy to clipboard');
+    }
+  }
+
   async function importEnvVars() {
     let parsed: any[];
     try {
@@ -963,7 +978,8 @@
           <h3 class="section-title">Environment Variables</h3>
           <div class="env-toolbar">
             {#if envVars.length > 0}
-              <button class="btn-sm" onclick={exportEnvVars}>Export JSON</button>
+              <button class="btn-sm" onclick={copyEnvVars}>Copy JSON</button>
+              <button class="btn-sm" onclick={exportEnvVars}>Download JSON</button>
             {/if}
             <button class="btn-sm" onclick={() => { showImportEnv = !showImportEnv; showAddEnv = false; }}>
               {showImportEnv ? 'Cancel Import' : 'Import JSON'}
