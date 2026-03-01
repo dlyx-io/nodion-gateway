@@ -7,6 +7,7 @@ Nodion Gateway is a standalone RBAC (Role-Based Access Control) proxy for the [N
 The project is **generic** (not tied to any specific Nodion customer) and licensed under MIT.
 
 **Repository**: https://github.com/dlyx-io/nodion-gateway
+**Production URL**: https://nodion-api-gateway-web.euc.nodion.app/
 
 ## Architecture
 

@@ -57,6 +57,19 @@
   // Git info (resolved names for integration/repo/branch IDs)
   let gitInfo: { integration: string; repo: string; branch: string } | null = $state(null);
 
+  // Git edit state
+  let editingGit = $state(false);
+  let gitIntegrations: any[] = $state([]);
+  let gitRepos: any[] = $state([]);
+  let gitBranches: any[] = $state([]);
+  let editIntegrationId = $state('');
+  let editRepoId = $state('');
+  let editBranchId = $state('');
+  let loadingGitEdit = $state(false);
+  let loadingGitRepos = $state(false);
+  let loadingGitBranches = $state(false);
+  let savingGit = $state(false);
+
   // Delete
   let showDeleteConfirm = $state(false);
   let deleting = $state(false);
@@ -145,6 +158,85 @@
         branch: app.branch_id || '-',
       };
     }
+  }
+
+  // --- Git edit ---
+  async function startEditGit() {
+    editingGit = true;
+    editIntegrationId = app.integration_id || '';
+    editRepoId = app.repository_id || '';
+    editBranchId = app.branch_id || '';
+    loadingGitEdit = true;
+    try {
+      const projList = await get<any>('/projects');
+      const slugs = (Array.isArray(projList) ? projList : projList.projects || []).map((p: any) => p.slug);
+      if (slugs.length === 0) slugs.push(slug);
+      allProjectSlugs = slugs;
+      gitIntegrations = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations`, 'integrations');
+      if (editIntegrationId) await loadGitEditRepos();
+      if (editIntegrationId && editRepoId) await loadGitEditBranches();
+    } catch { /* ignore */ }
+    finally { loadingGitEdit = false; }
+  }
+
+  async function loadGitEditRepos() {
+    if (!editIntegrationId) return;
+    loadingGitRepos = true;
+    try {
+      const slugs = allProjectSlugs.length > 0 ? allProjectSlugs : [slug];
+      gitRepos = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${editIntegrationId}/repositories`, 'repositories');
+    } catch { gitRepos = []; }
+    finally { loadingGitRepos = false; }
+  }
+
+  async function loadGitEditBranches() {
+    if (!editIntegrationId || !editRepoId) return;
+    loadingGitBranches = true;
+    try {
+      const slugs = allProjectSlugs.length > 0 ? allProjectSlugs : [slug];
+      gitBranches = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${editIntegrationId}/repositories/${editRepoId}/branches`, 'branches');
+    } catch { gitBranches = []; }
+    finally { loadingGitBranches = false; }
+  }
+
+  async function onGitIntegrationChange() {
+    editRepoId = '';
+    editBranchId = '';
+    gitRepos = [];
+    gitBranches = [];
+    await loadGitEditRepos();
+  }
+
+  async function onGitRepoChange() {
+    editBranchId = '';
+    gitBranches = [];
+    await loadGitEditBranches();
+  }
+
+  async function saveGitInfo() {
+    savingGit = true;
+    try {
+      const body: any = {};
+      if (editIntegrationId !== app.integration_id) body.integration_id = editIntegrationId;
+      if (editRepoId !== app.repository_id) body.repository_id = editRepoId;
+      if (editBranchId !== app.branch_id) body.branch_id = editBranchId;
+      if (Object.keys(body).length === 0) {
+        editingGit = false;
+        return;
+      }
+      await patch(`/projects/${slug}/applications/${appId}`, body);
+      success('Git settings updated');
+      editingGit = false;
+      await loadApp();
+    } catch (e: any) {
+      toastError('Failed: ' + e.message);
+    } finally {
+      savingGit = false;
+    }
+  }
+
+  function cancelEditGit() {
+    editingGit = false;
   }
 
   // --- Tab loaders ---
@@ -628,18 +720,75 @@
             <span class="info-label">Slug</span>
             <span class="info-value">{app.slug || '-'}</span>
           </div>
-          <div class="info-card">
-            <span class="info-label">Integration</span>
-            <span class="info-value">{gitInfo?.integration || '...'}</span>
-          </div>
-          <div class="info-card">
-            <span class="info-label">Repository</span>
-            <span class="info-value">{gitInfo?.repo || '...'}</span>
-          </div>
-          <div class="info-card">
-            <span class="info-label">Branch</span>
-            <span class="info-value">{gitInfo?.branch || '...'}</span>
-          </div>
+          {#if !editingGit}
+            <div class="info-card info-card-clickable" onclick={startEditGit} title="Click to edit git settings">
+              <span class="info-label">Integration</span>
+              <span class="info-value">{gitInfo?.integration || '...'}</span>
+            </div>
+            <div class="info-card info-card-clickable" onclick={startEditGit} title="Click to edit git settings">
+              <span class="info-label">Repository</span>
+              <span class="info-value">{gitInfo?.repo || '...'}</span>
+            </div>
+            <div class="info-card info-card-clickable" onclick={startEditGit} title="Click to edit git settings">
+              <span class="info-label">Branch</span>
+              <span class="info-value">{gitInfo?.branch || '...'}</span>
+            </div>
+          {:else}
+            <div class="info-card git-edit-card" style="grid-column: span 3;">
+              <span class="info-label">Git Settings</span>
+              {#if loadingGitEdit}
+                <div class="loading-sm">Loading...</div>
+              {:else}
+                <div class="git-edit-fields">
+                  <div class="git-edit-row">
+                    <label for="edit-integration">Integration</label>
+                    <select id="edit-integration" bind:value={editIntegrationId} class="input" onchange={onGitIntegrationChange}>
+                      {#each gitIntegrations as i}
+                        <option value={i.id}>{i.service_type}: {i.username}</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <div class="git-edit-row">
+                    <label for="edit-repo">Repository</label>
+                    <select id="edit-repo" bind:value={editRepoId} class="input" onchange={onGitRepoChange} disabled={loadingGitRepos}>
+                      {#if loadingGitRepos}
+                        <option>Loading...</option>
+                      {:else}
+                        {#each gitRepos as r}
+                          <option value={r.id}>{r.full_name || r.name}</option>
+                        {/each}
+                      {/if}
+                    </select>
+                  </div>
+                  <div class="git-edit-row">
+                    <label for="edit-branch">Branch</label>
+                    <div class="branch-select-row">
+                      <select id="edit-branch" bind:value={editBranchId} class="input" disabled={loadingGitBranches} style="flex: 1">
+                        {#if loadingGitBranches}
+                          <option>Loading...</option>
+                        {:else}
+                          {#each gitBranches as b}
+                            <option value={b.id}>{b.name}</option>
+                          {/each}
+                        {/if}
+                      </select>
+                      <button class="btn-icon" onclick={loadGitEditBranches} disabled={loadingGitBranches} title="Refresh branches">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class:spin={loadingGitBranches}>
+                          <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="git-edit-actions">
+                    <button class="btn-primary btn-sm" onclick={saveGitInfo} disabled={savingGit}>
+                      {savingGit ? 'Saving...' : 'Save'}
+                    </button>
+                    <button class="btn-secondary btn-sm" onclick={cancelEditGit}>Cancel</button>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {/if}
           <div class="info-card">
             <span class="info-label">Region</span>
             <span class="info-value">{app.region?.name || '-'}</span>
@@ -1029,15 +1178,22 @@
 
               <div class="form-group">
                 <label for="clone-branch">Branch</label>
-                <select id="clone-branch" bind:value={cloneBranchId} class="input" disabled={loadingCloneBranches}>
-                  {#if loadingCloneBranches}
-                    <option>Loading...</option>
-                  {:else}
-                    {#each cloneBranches as b}
-                      <option value={b.id}>{b.name}</option>
-                    {/each}
-                  {/if}
-                </select>
+                <div class="branch-select-row">
+                  <select id="clone-branch" bind:value={cloneBranchId} class="input" disabled={loadingCloneBranches} style="flex: 1">
+                    {#if loadingCloneBranches}
+                      <option>Loading...</option>
+                    {:else}
+                      {#each cloneBranches as b}
+                        <option value={b.id}>{b.name}</option>
+                      {/each}
+                    {/if}
+                  </select>
+                  <button class="btn-icon" onclick={loadCloneBranches} disabled={loadingCloneBranches} title="Refresh branches">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class:spin={loadingCloneBranches}>
+                      <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <hr class="divider" />
@@ -1190,6 +1346,25 @@
     margin-bottom: 4px;
   }
   .info-value { font-size: 14px; }
+  .info-card-clickable { cursor: pointer; transition: border-color 0.15s; }
+  .info-card-clickable:hover { border-color: var(--primary); }
+  .git-edit-card { padding: 16px; }
+  .git-edit-fields { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+  .git-edit-row { display: flex; align-items: center; gap: 10px; }
+  .git-edit-row label { font-size: 13px; font-weight: 500; min-width: 90px; color: var(--text-muted); }
+  .git-edit-row .input { flex: 1; }
+  .git-edit-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .branch-select-row { display: flex; gap: 6px; flex: 1; align-items: center; }
+  .btn-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; padding: 0; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-card); cursor: pointer;
+    color: var(--text-muted); transition: all 0.15s;
+  }
+  .btn-icon:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; }
 
   /* Section */

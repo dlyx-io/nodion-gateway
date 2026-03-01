@@ -20,6 +20,7 @@ const agentAllowed: RoutePattern[] = [
   { method: 'POST', pattern: /^\/applications\/[^/]+\/domains\/[^/]+\/verify$/ },
   { method: 'POST', pattern: /^\/applications\/[^/]+\/domains\/[^/]+\/connect$/ },
   // PATCH
+  { method: 'PATCH', pattern: /^\/applications\/[^/]+$/ },
   { method: 'PATCH', pattern: /^\/applications\/[^/]+\/env_variables\/[^/]+$/ },
   // DELETE
   { method: 'DELETE', pattern: /^\/applications\/[^/]+$/ },

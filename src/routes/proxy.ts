@@ -146,6 +146,23 @@ proxy.openapi(createRoute({
 }), proxyHandler as any);
 
 proxy.openapi(createRoute({
+  method: 'patch',
+  path: '/projects/{slug}/applications/{appId}',
+  tags: [tag],
+  summary: 'Update application',
+  description: 'Update application fields (e.g. integration_id, repository_id, branch_id)',
+  request: {
+    params: appIdParam,
+    body: { content: { 'application/json': { schema: z.object({
+      integration_id: z.string().uuid().optional().openapi({ description: 'Git integration UUID' }),
+      repository_id: z.string().uuid().optional().openapi({ description: 'Repository UUID' }),
+      branch_id: z.string().uuid().optional().openapi({ description: 'Branch UUID' }),
+    }).passthrough() } } },
+  },
+  responses: jsonResponse,
+}), proxyHandler as any);
+
+proxy.openapi(createRoute({
   method: 'delete',
   path: '/projects/{slug}/applications/{appId}',
   tags: [tag],
