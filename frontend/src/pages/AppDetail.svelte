@@ -35,6 +35,9 @@
   let editEnvKey = $state('');
   let editEnvVal = $state('');
   let editEnvBuild = $state(false);
+  let importingEnv = $state(false);
+  let showImportEnv = $state(false);
+  let importEnvJson = $state('');
 
   // Domains
   let domains: any[] = $state([]);
@@ -373,6 +376,60 @@
     } catch (e: any) {
       toastError('Failed: ' + e.message);
     }
+  }
+
+  // Env export/import
+  function exportEnvVars() {
+    const data = envVars.map((v: any) => ({
+      env_key: v.env_key,
+      env_val: v.env_val,
+      buildtime: !!v.buildtime,
+    }));
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${app.slug || 'env'}-variables.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    success(`Exported ${data.length} variables`);
+  }
+
+  async function importEnvVars() {
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(importEnvJson);
+      if (!Array.isArray(parsed)) throw new Error('Expected JSON array');
+    } catch (e: any) {
+      toastError('Invalid JSON: ' + e.message);
+      return;
+    }
+    importingEnv = true;
+    let created = 0;
+    let failed = 0;
+    for (const v of parsed) {
+      if (!v.env_key) { failed++; continue; }
+      try {
+        await post(`/projects/${slug}/applications/${appId}/env_variables`, {
+          env_key: v.env_key,
+          env_val: v.env_val ?? '',
+          buildtime: v.buildtime || undefined,
+        });
+        created++;
+      } catch {
+        failed++;
+      }
+    }
+    importingEnv = false;
+    showImportEnv = false;
+    importEnvJson = '';
+    if (failed > 0) {
+      toastError(`Imported ${created}, failed ${failed}`);
+    } else {
+      success(`Imported ${created} variables`);
+    }
+    await loadEnvVars();
   }
 
   // Domain actions
@@ -904,10 +961,34 @@
       {:else if tab === 'env'}
         <div class="section-header">
           <h3 class="section-title">Environment Variables</h3>
-          <button class="btn-sm" onclick={() => { showAddEnv = !showAddEnv; }}>
-            {showAddEnv ? 'Cancel' : 'Add Variable'}
-          </button>
+          <div class="env-toolbar">
+            {#if envVars.length > 0}
+              <button class="btn-sm" onclick={exportEnvVars}>Export JSON</button>
+            {/if}
+            <button class="btn-sm" onclick={() => { showImportEnv = !showImportEnv; showAddEnv = false; }}>
+              {showImportEnv ? 'Cancel Import' : 'Import JSON'}
+            </button>
+            <button class="btn-sm" onclick={() => { showAddEnv = !showAddEnv; showImportEnv = false; }}>
+              {showAddEnv ? 'Cancel' : 'Add Variable'}
+            </button>
+          </div>
         </div>
+
+        {#if showImportEnv}
+          <div class="add-form">
+            <div class="import-area">
+              <textarea
+                class="input import-textarea"
+                placeholder={'Paste JSON array, e.g.:\n[\n  { "env_key": "KEY", "env_val": "value", "buildtime": false },\n  ...\n]'}
+                bind:value={importEnvJson}
+                rows="8"
+              ></textarea>
+              <button class="btn-primary btn-sm" onclick={importEnvVars} disabled={importingEnv || !importEnvJson.trim()}>
+                {importingEnv ? 'Importing...' : 'Import'}
+              </button>
+            </div>
+          </div>
+        {/if}
 
         {#if showAddEnv}
           <div class="add-form">
@@ -1365,6 +1446,14 @@
   .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
   .spin { animation: spin 1s linear infinite; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .env-toolbar { display: flex; gap: 6px; }
+  .import-area { display: flex; flex-direction: column; gap: 10px; }
+  .import-textarea {
+    width: 100%; resize: vertical; font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px; line-height: 1.5; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;
+  }
+  .import-textarea::placeholder { color: var(--text-muted); }
   .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; }
 
   /* Section */
