@@ -53,6 +53,15 @@ export const keyScopes = sqliteTable('key_scopes', {
   primaryKey({ columns: [table.keyId, table.projectSlug, table.scope, table.target] }),
 ]);
 
+export const serviceAccounts = sqliteTable('service_accounts', {
+  id: text('id').primaryKey(),
+  label: text('label').notNull(),
+  email: text('email').notNull(),
+  passwordEncrypted: text('password_encrypted').notNull(),
+  totpSecretEncrypted: text('totp_secret_encrypted'),
+  createdAt: text('created_at').notNull(),
+});
+
 export const auditLog = sqliteTable('audit_log', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   timestamp: text('timestamp').notNull(),

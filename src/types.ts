@@ -41,6 +41,15 @@ export interface BlocklistEntry {
   createdAt: string;
 }
 
+export interface ServiceAccount {
+  id: string;
+  label: string;
+  email: string;
+  passwordEncrypted: string;
+  totpSecretEncrypted: string | null;
+  createdAt: string;
+}
+
 export interface AuditEntry {
   id: number;
   timestamp: string;

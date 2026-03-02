@@ -12,5 +12,6 @@ export const {
   resources,
   blocklist,
   keyScopes,
+  serviceAccounts,
   auditLog,
 } = schema;
