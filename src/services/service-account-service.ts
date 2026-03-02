@@ -53,9 +53,9 @@ export async function getServiceAccount(id: string): Promise<ServiceAccount | nu
 
 export async function updateServiceAccount(
   id: string,
-  updates: { label?: string; password?: string; totpSecret?: string },
+  updates: { label?: string; password?: string; totpSecret?: string | null },
 ): Promise<boolean> {
-  const set: Record<string, string> = {};
+  const set: Record<string, string | null> = {};
   if (updates.label !== undefined) set.label = updates.label;
   if (updates.password !== undefined) set.passwordEncrypted = updates.password;
   if (updates.totpSecret !== undefined) set.totpSecretEncrypted = updates.totpSecret;

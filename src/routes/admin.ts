@@ -6,6 +6,8 @@ import * as ownershipService from '../services/ownership-service.js';
 import * as blocklistService from '../services/blocklist-service.js';
 import * as auditService from '../services/audit-service.js';
 import * as scopeService from '../services/scope-service.js';
+import * as serviceAccountService from '../services/service-account-service.js';
+import { clearSession } from '../services/nodion-session.js';
 
 const admin = new OpenAPIHono();
 
@@ -506,6 +508,139 @@ admin.openapi(queryAuditRoute, async (c) => {
   const params = c.req.valid('query');
   const entries = await auditService.query(params);
   return c.json(entries, 200);
+});
+
+// --- Service Accounts ---
+
+const createServiceAccountRoute = createRoute({
+  method: 'post',
+  path: '/service-accounts',
+  tags: ['Admin — Service Accounts'],
+  summary: 'Create a service account',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            label: z.string().min(1).openapi({ example: 'Deployment Bot' }),
+            email: z.string().email().openapi({ example: 'bot@example.com' }),
+            password: z.string().min(1),
+            totpSecret: z.string().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    201: {
+      description: 'Service account created',
+      content: {
+        'application/json': {
+          schema: z.object({ id: z.string(), label: z.string(), email: z.string() }),
+        },
+      },
+    },
+  },
+});
+
+admin.openapi(createServiceAccountRoute, async (c) => {
+  const { label, email, password, totpSecret } = c.req.valid('json');
+  const { id } = await serviceAccountService.createServiceAccount(label, email, password, totpSecret);
+  return c.json({ id, label, email }, 201);
+});
+
+const listServiceAccountsRoute = createRoute({
+  method: 'get',
+  path: '/service-accounts',
+  tags: ['Admin — Service Accounts'],
+  summary: 'List all service accounts',
+  responses: {
+    200: {
+      description: 'List of service accounts',
+      content: {
+        'application/json': {
+          schema: z.array(z.object({
+            id: z.string(),
+            label: z.string(),
+            email: z.string(),
+            createdAt: z.string(),
+          })),
+        },
+      },
+    },
+  },
+});
+
+admin.openapi(listServiceAccountsRoute, async (c) => {
+  const accounts = await serviceAccountService.listServiceAccounts();
+  return c.json(accounts, 200);
+});
+
+const updateServiceAccountRoute = createRoute({
+  method: 'patch',
+  path: '/service-accounts/{id}',
+  tags: ['Admin — Service Accounts'],
+  summary: 'Update a service account',
+  request: {
+    params: z.object({ id: z.string() }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            label: z.string().min(1).optional(),
+            password: z.string().min(1).optional(),
+            totpSecret: z.string().nullable().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Service account updated',
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+    },
+    404: {
+      description: 'Service account not found',
+      content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+    },
+  },
+});
+
+admin.openapi(updateServiceAccountRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const updated = await serviceAccountService.updateServiceAccount(id, body);
+  if (!updated) return c.json({ error: 'Service account not found or no changes' }, 404);
+  return c.json({ success: true }, 200);
+});
+
+const deleteServiceAccountRoute = createRoute({
+  method: 'delete',
+  path: '/service-accounts/{id}',
+  tags: ['Admin — Service Accounts'],
+  summary: 'Delete a service account',
+  request: {
+    params: z.object({ id: z.string() }),
+  },
+  responses: {
+    200: {
+      description: 'Service account deleted',
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+    },
+    404: {
+      description: 'Service account not found',
+      content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+    },
+  },
+});
+
+admin.openapi(deleteServiceAccountRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const deleted = await serviceAccountService.deleteServiceAccount(id);
+  if (!deleted) return c.json({ error: 'Service account not found' }, 404);
+  clearSession(id);
+  return c.json({ success: true }, 200);
 });
 
 export { admin };

@@ -6,6 +6,7 @@ import { admin } from './routes/admin.js';
 import { projects } from './routes/projects.js';
 import { proxy } from './routes/proxy.js';
 import { me } from './routes/me.js';
+import { integrations } from './routes/integrations.js';
 import { mcpRouter, initMcp } from './mcp/server.js';
 
 const app = new OpenAPIHono();
@@ -45,11 +46,14 @@ api.route('/mcp', mcpRouter);
 api.use('/me', authMiddleware);
 api.use('/admin/*', authMiddleware);
 api.use('/projects/*', authMiddleware);
+api.use('/integrations', authMiddleware);
+api.use('/integrations/*', authMiddleware);
 
 // Routes
 api.route('/me', me);
 api.route('/admin', admin);
 api.route('/projects', projects);
+api.route('/integrations', integrations);
 api.route('/', proxy);
 
 // Mount API
