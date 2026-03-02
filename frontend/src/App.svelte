@@ -12,6 +12,7 @@
   import Blocklist from './pages/Blocklist.svelte';
   import AuditLog from './pages/AuditLog.svelte';
   import ServiceAccounts from './pages/ServiceAccounts.svelte';
+  import Integrations from './pages/Integrations.svelte';
 
   let ready = $state(false);
   let loggedIn = $state(false);
@@ -24,6 +25,7 @@
     '/apps': Apps,
     '/apps/:slug': Apps,
     '/apps/:slug/:appId': AppDetail,
+    '/integrations': Integrations,
     '/blocklist': Blocklist,
     '/audit': AuditLog,
   };
