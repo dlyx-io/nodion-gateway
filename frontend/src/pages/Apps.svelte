@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { get, post, fetchMerged } from '../lib/api.js';
+  import { get, post } from '../lib/api.js';
   import { navigate } from '../lib/router.svelte.js';
   import { success, error as toastError } from '../lib/toast.svelte.js';
   import { isAdmin } from '../lib/auth.js';
@@ -117,19 +117,18 @@
     repositories = [];
     branches = [];
 
-    // Load reference data — regions/instance_types from current project, integrations merged from all
-    const allSlugs = projects.map((p) => p.slug);
+    // Load reference data — regions/instance_types from current project, integrations from aggregation API
     loadingRegions = true;
     loadingIntegrations = true;
     try {
-      const [regResult, itResult, mergedIntegrations] = await Promise.all([
+      const [regResult, itResult, intResult] = await Promise.all([
         get<any>(`/projects/${selectedSlug}/regions`),
         get<any>(`/projects/${selectedSlug}/instance_types`),
-        fetchMerged<any>(allSlugs, (s) => `/projects/${s}/integrations`, 'integrations'),
+        get<any>('/integrations'),
       ]);
       regions = regResult.regions || regResult.data || [];
       instanceTypes = itResult.instance_types || itResult.data || [];
-      integrations = mergedIntegrations;
+      integrations = intResult.integrations || [];
       if (regions.length > 0) newRegionId = regions[0].id;
       if (instanceTypes.length > 0) newInstanceTypeId = instanceTypes[0].id;
     } catch (e: any) {
@@ -148,8 +147,8 @@
     if (!newIntegrationId) return;
     loadingRepos = true;
     try {
-      const allSlugs = projects.map((p) => p.slug);
-      repositories = await fetchMerged<any>(allSlugs, (s) => `/projects/${s}/integrations/${newIntegrationId}/repositories`, 'repositories');
+      const r = await get<any>(`/integrations/${newIntegrationId}/repositories`);
+      repositories = r.repositories || r.data || [];
     } catch { repositories = []; }
     finally { loadingRepos = false; }
   }
@@ -160,10 +159,36 @@
     if (!newRepoId || !newIntegrationId) return;
     loadingBranches = true;
     try {
-      const allSlugs = projects.map((p) => p.slug);
-      branches = await fetchMerged<any>(allSlugs, (s) => `/projects/${s}/integrations/${newIntegrationId}/repositories/${newRepoId}/branches`, 'branches');
+      const r = await get<any>(`/integrations/${newIntegrationId}/repositories/${newRepoId}/branches`);
+      branches = r.branches || r.data || [];
     } catch { branches = []; }
     finally { loadingBranches = false; }
+  }
+
+  function integrationLabel(i: any): string {
+    const name = `${i.service_type}: ${i.username}`;
+    if (!i.source) return name;
+    if (i.source.type === 'service-account') return `${name} (SA: ${i.source.label})`;
+    if (i.source.type === 'project' && i.source.projects?.length) return `${name} (${i.source.projects.join(', ')})`;
+    return name;
+  }
+
+  let syncing = $state(false);
+
+  async function syncIntegration() {
+    if (!newIntegrationId) return;
+    const integration = integrations.find((i: any) => i.id === newIntegrationId);
+    if (!integration?.syncable) return;
+    syncing = true;
+    try {
+      await post(`/integrations/${newIntegrationId}/sync_repos`);
+      success('Repositories synced');
+      await onIntegrationChange();
+    } catch (e: any) {
+      toastError('Sync failed: ' + e.message);
+    } finally {
+      syncing = false;
+    }
   }
 
   async function createApp() {
@@ -326,17 +351,26 @@
 
           <div class="form-group">
             <label for="integration">Git Integration</label>
-            <select id="integration" bind:value={newIntegrationId} class="input"
-              onchange={onIntegrationChange} disabled={loadingIntegrations}>
-              <option value="">Select integration...</option>
-              {#if loadingIntegrations}
-                <option>Loading...</option>
-              {:else}
-                {#each integrations as i}
-                  <option value={i.id}>{i.service_type}: {i.username}</option>
-                {/each}
+            <div class="integration-row">
+              <select id="integration" bind:value={newIntegrationId} class="input"
+                onchange={onIntegrationChange} disabled={loadingIntegrations} style="flex: 1">
+                <option value="">Select integration...</option>
+                {#if loadingIntegrations}
+                  <option>Loading...</option>
+                {:else}
+                  {#each integrations as i}
+                    <option value={i.id}>{integrationLabel(i)}</option>
+                  {/each}
+                {/if}
+              </select>
+              {#if newIntegrationId && integrations.find((i: any) => i.id === newIntegrationId)?.syncable}
+                <button type="button" class="btn-sync" onclick={syncIntegration} disabled={syncing} title="Sync repositories">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class:spin={syncing}>
+                    <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                  </svg>
+                </button>
               {/if}
-            </select>
+            </div>
           </div>
 
           <div class="form-group">
@@ -493,6 +527,24 @@
   .input:disabled { opacity: 0.5; cursor: not-allowed; }
   select.input option { background: var(--bg); color: var(--text); }
   .divider { border: none; border-top: 1px solid var(--border); margin: 8px 0 16px; }
+  .integration-row { display: flex; gap: 8px; align-items: center; }
+  .btn-sync {
+    padding: 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-sync:hover:not(:disabled) { background: var(--bg-hover); color: var(--primary); border-color: var(--primary); }
+  .btn-sync:disabled { opacity: 0.5; cursor: not-allowed; }
+  .spin { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Buttons */
   .btn-primary {

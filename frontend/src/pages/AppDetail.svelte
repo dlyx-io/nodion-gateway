@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { get, post, patch, del, fetchMerged } from '../lib/api.js';
+  import { get, post, patch, del } from '../lib/api.js';
   import { navigate } from '../lib/router.svelte.js';
   import { success, error as toastError } from '../lib/toast.svelte.js';
   import { isAdmin } from '../lib/auth.js';
@@ -93,7 +93,6 @@
   let cloneBranches: any[] = $state([]);
   let cloneIntegrations: any[] = $state([]);
   let cloneRepos: any[] = $state([]);
-  let allProjectSlugs: string[] = $state([]);
   let loadingCloneData = $state(false);
   let loadingCloneBranches = $state(false);
   let loadingCloneRepos = $state(false);
@@ -123,13 +122,9 @@
   async function loadGitInfo() {
     if (!app?.integration_id) return;
     try {
-      // Get all project slugs for fetchMerged (integration may belong to a different project)
-      const projList = await get<any>('/projects');
-      const slugs = (Array.isArray(projList) ? projList : projList.projects || []).map((p: any) => p.slug);
-      if (slugs.length === 0) slugs.push(slug);
-
-      // Resolve integration name
-      const integrations = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations`, 'integrations');
+      // Resolve integration name via aggregation API
+      const intResult = await get<any>('/integrations');
+      const integrations = intResult.integrations || [];
       const integration = integrations.find((i: any) => i.id === app.integration_id);
 
       let repoName = '';
@@ -137,13 +132,15 @@
 
       // Resolve repo name
       if (app.repository_id) {
-        const repos = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${app.integration_id}/repositories`, 'repositories');
+        const repoResult = await get<any>(`/integrations/${app.integration_id}/repositories`);
+        const repos = repoResult.repositories || repoResult.data || [];
         const repo = repos.find((r: any) => r.id === app.repository_id);
         if (repo) repoName = repo.full_name || repo.name;
 
         // Resolve branch name
         if (repo && app.branch_id) {
-          const branches = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${app.integration_id}/repositories/${app.repository_id}/branches`, 'branches');
+          const branchResult = await get<any>(`/integrations/${app.integration_id}/repositories/${app.repository_id}/branches`);
+          const branches = branchResult.branches || branchResult.data || [];
           const branch = branches.find((b: any) => b.id === app.branch_id);
           if (branch) branchName = branch.name;
         }
@@ -171,11 +168,8 @@
     editBranchId = app.branch_id || '';
     loadingGitEdit = true;
     try {
-      const projList = await get<any>('/projects');
-      const slugs = (Array.isArray(projList) ? projList : projList.projects || []).map((p: any) => p.slug);
-      if (slugs.length === 0) slugs.push(slug);
-      allProjectSlugs = slugs;
-      gitIntegrations = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations`, 'integrations');
+      const intResult = await get<any>('/integrations');
+      gitIntegrations = intResult.integrations || [];
       if (editIntegrationId) await loadGitEditRepos();
       if (editIntegrationId && editRepoId) await loadGitEditBranches();
     } catch { /* ignore */ }
@@ -186,8 +180,8 @@
     if (!editIntegrationId) return;
     loadingGitRepos = true;
     try {
-      const slugs = allProjectSlugs.length > 0 ? allProjectSlugs : [slug];
-      gitRepos = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${editIntegrationId}/repositories`, 'repositories');
+      const r = await get<any>(`/integrations/${editIntegrationId}/repositories`);
+      gitRepos = r.repositories || r.data || [];
     } catch { gitRepos = []; }
     finally { loadingGitRepos = false; }
   }
@@ -196,8 +190,8 @@
     if (!editIntegrationId || !editRepoId) return;
     loadingGitBranches = true;
     try {
-      const slugs = allProjectSlugs.length > 0 ? allProjectSlugs : [slug];
-      gitBranches = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${editIntegrationId}/repositories/${editRepoId}/branches`, 'branches');
+      const r = await get<any>(`/integrations/${editIntegrationId}/repositories/${editRepoId}/branches`);
+      gitBranches = r.branches || r.data || [];
     } catch { gitBranches = []; }
     finally { loadingGitBranches = false; }
   }
@@ -557,20 +551,17 @@
       include: true,
     }));
 
-    // Load all project slugs + reference data (integrations merged from all projects)
+    // Load reference data (integrations from aggregation API)
     loadingCloneData = true;
     try {
-      const projects = await get<{ slug: string }[]>('/projects');
-      allProjectSlugs = projects.map((p) => p.slug);
-
-      const [regResult, itResult, mergedIntegrations] = await Promise.all([
+      const [regResult, itResult, intResult] = await Promise.all([
         get<any>(`/projects/${slug}/regions`),
         get<any>(`/projects/${slug}/instance_types`),
-        fetchMerged<any>(allProjectSlugs, (s) => `/projects/${s}/integrations`, 'integrations'),
+        get<any>('/integrations'),
       ]);
       cloneRegions = regResult.regions || [];
       cloneInstanceTypes = itResult.instance_types || [];
-      cloneIntegrations = mergedIntegrations;
+      cloneIntegrations = intResult.integrations || [];
     } catch { /* ignore */ }
     finally { loadingCloneData = false; }
 
@@ -588,8 +579,8 @@
     if (!cloneIntegrationId) return;
     loadingCloneRepos = true;
     try {
-      const slugs = allProjectSlugs.length > 0 ? allProjectSlugs : [slug];
-      cloneRepos = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${cloneIntegrationId}/repositories`, 'repositories');
+      const r = await get<any>(`/integrations/${cloneIntegrationId}/repositories`);
+      cloneRepos = r.repositories || r.data || [];
     } catch { cloneRepos = []; }
     finally { loadingCloneRepos = false; }
   }
@@ -598,8 +589,8 @@
     if (!cloneIntegrationId || !cloneRepoId) return;
     loadingCloneBranches = true;
     try {
-      const slugs = allProjectSlugs.length > 0 ? allProjectSlugs : [slug];
-      cloneBranches = await fetchMerged<any>(slugs, (s) => `/projects/${s}/integrations/${cloneIntegrationId}/repositories/${cloneRepoId}/branches`, 'branches');
+      const r = await get<any>(`/integrations/${cloneIntegrationId}/repositories/${cloneRepoId}/branches`);
+      cloneBranches = r.branches || r.data || [];
     } catch { cloneBranches = []; }
     finally { loadingCloneBranches = false; }
   }
@@ -721,6 +712,14 @@
     }
   }
 
+  function integrationLabel(i: any): string {
+    const name = `${i.service_type}: ${i.username}`;
+    if (!i.source) return name;
+    if (i.source.type === 'service-account') return `${name} (SA: ${i.source.label})`;
+    if (i.source.type === 'project' && i.source.projects?.length) return `${name} (${i.source.projects.join(', ')})`;
+    return name;
+  }
+
   function statusColor(status: string): string {
     switch (status?.toLowerCase()) {
       case 'online': case 'running': case 'available': case 'active': case 'finished': return 'var(--success)';
@@ -816,7 +815,7 @@
                     <label for="edit-integration">Integration</label>
                     <select id="edit-integration" bind:value={editIntegrationId} class="input" onchange={onGitIntegrationChange}>
                       {#each gitIntegrations as i}
-                        <option value={i.id}>{i.service_type}: {i.username}</option>
+                        <option value={i.id}>{integrationLabel(i)}</option>
                       {/each}
                     </select>
                   </div>
@@ -1255,7 +1254,7 @@
                 <label for="clone-integration">Git Integration</label>
                 <select id="clone-integration" bind:value={cloneIntegrationId} class="input" onchange={onCloneIntegrationChange}>
                   {#each cloneIntegrations as i}
-                    <option value={i.id}>{i.service_type}: {i.username}</option>
+                    <option value={i.id}>{integrationLabel(i)}</option>
                   {/each}
                 </select>
               </div>

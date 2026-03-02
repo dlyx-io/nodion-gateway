@@ -11,6 +11,7 @@
   import AppDetail from './pages/AppDetail.svelte';
   import Blocklist from './pages/Blocklist.svelte';
   import AuditLog from './pages/AuditLog.svelte';
+  import ServiceAccounts from './pages/ServiceAccounts.svelte';
 
   let ready = $state(false);
   let loggedIn = $state(false);
@@ -19,6 +20,7 @@
     '/': Dashboard,
     '/projects': Projects,
     '/keys': Keys,
+    '/service-accounts': ServiceAccounts,
     '/apps': Apps,
     '/apps/:slug': Apps,
     '/apps/:slug/:appId': AppDetail,
