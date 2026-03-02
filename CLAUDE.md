@@ -120,7 +120,8 @@ nodion-gateway/
 │   │   ├── project.ts        # Extract project slug, look up Nodion key
 │   │   └── audit.ts          # Request logging middleware
 │   ├── routes/
-│   │   ├── admin.ts          # Admin endpoints (keys, projects, blocklist, audit)
+│   │   ├── admin.ts          # Admin endpoints (keys, projects, service-accounts, blocklist, audit)
+│   │   ├── integrations.ts   # Aggregated integrations from projects + service accounts
 │   │   ├── projects.ts       # GET /projects — list accessible projects per key
 │   │   └── proxy.ts          # Proxy route under /projects/:slug/*
 │   ├── services/
@@ -129,15 +130,17 @@ nodion-gateway/
 │   │   ├── role-service.ts   # Role definitions, scope checking
 │   │   ├── ownership-service.ts  # Resource ownership tracking
 │   │   ├── blocklist-service.ts  # Production app blocklist
-│   │   └── audit-service.ts     # Audit log queries
+│   │   ├── audit-service.ts     # Audit log queries
+│   │   ├── service-account-service.ts  # Service account CRUD
+│   │   └── nodion-session.ts    # /ui/v1/ session management (token rotation, TOTP)
 │   ├── db/
-│   │   ├── schema.ts         # Drizzle table definitions (6 tables)
+│   │   ├── schema.ts         # Drizzle table definitions (7 tables)
 │   │   ├── connection.ts     # DB connection (SQLite or PostgreSQL based on env)
 │   │   └── migrate.ts        # Auto-migration on startup
 │   ├── mcp/
 │   │   └── server.ts         # MCP server (3 meta-tools against OpenAPI spec)
 │   ├── config.ts             # Environment variables with zod validation
-│   └── types.ts              # Types (Role, ApiKey, Project, Resource, AuditEntry)
+│   └── types.ts              # Types (Role, ApiKey, Project, Resource, ServiceAccount, AuditEntry)
 ├── tests/
 ├── Dockerfile
 ├── .env.example
@@ -160,13 +163,14 @@ The `DATABASE_URL` env var controls which dialect is used:
 
 Schema is defined once in `src/db/schema.ts` using Drizzle's dialect-agnostic API. Connection setup in `src/db/connection.ts` picks the right driver at runtime.
 
-### Tables (6)
+### Tables (7)
 
 - **projects** — Nodion projects with encrypted API keys (slug, label, nodion_api_key_encrypted)
 - **api_keys** — Gateway API keys with SHA-256 hashes (id, key_hash, label, role)
 - **api_key_projects** — M2M: which projects a key can access
 - **resources** — Ownership tracking: which key created which app (app_id, project_slug, created_by_key)
 - **blocklist** — Production app protection (app_id, project_slug, reason)
+- **service_accounts** — Nodion user credentials for /ui/v1/ session access (id, label, email, password_encrypted, totp_secret_encrypted)
 - **audit_log** — Every request logged (timestamp, key_id, project_slug, method, endpoint, result)
 
 ## Roles & Scopes
@@ -189,6 +193,11 @@ These paths are **Nodion paths after stripping the project prefix**. Role checks
 | Method | Path | Description | Auth |
 |--------|------|-------------|------|
 | GET | /projects | List projects accessible to current key | Any key |
+| GET | /integrations | Aggregated integrations (projects + service accounts) | Any key |
+| GET | /integrations/:id/repositories | List repos for integration | Any key |
+| GET | /integrations/:id/repositories/:repoId/branches | List branches | Any key |
+| POST | /integrations/:id/sync_repos | Sync repo list (service-account only) | Any key |
+| POST | /integrations/:id/sync_repo | Sync branches (service-account only) | Any key |
 | GET | /docs | Swagger UI | None |
 | GET | /openapi.json | OpenAPI 3.1 spec | None |
 | GET | /health | Health check | None |
@@ -211,6 +220,10 @@ These paths are **Nodion paths after stripping the project prefix**. Role checks
 | POST | /admin/blocklist | Add to blocklist (appId, projectSlug, reason) |
 | DELETE | /admin/blocklist/:projectSlug/:appId | Remove from blocklist |
 | GET | /admin/audit | Query audit log (filters: keyId, project, method, result, from, to, limit) |
+| POST | /admin/service-accounts | Create service account (label, email, password, totpSecret?) |
+| GET | /admin/service-accounts | List service accounts (no credentials) |
+| PATCH | /admin/service-accounts/:id | Update service account |
+| DELETE | /admin/service-accounts/:id | Delete service account |
 
 ### Proxy Endpoints
 
@@ -253,6 +266,8 @@ DB_PATH=./data/gateway.db                        # Local dev (SQLite, default if
 ```
 
 Nodion API keys are stored **per project in the database** (not as env vars). Managed via `POST /admin/projects`.
+
+Service account credentials (for `/ui/v1/` access) are also stored in the database. Managed via `POST /admin/service-accounts`. These are **optional** — the gateway works without any service account configured.
 
 ## Docker
 
@@ -304,3 +319,7 @@ claude mcp add nodion-gateway \
 - Use nanoid for generating API key tokens, SHA-256 for hashing
 - Drizzle ORM: define schema once in `src/db/schema.ts`, use dialect-agnostic query builder — same code runs on SQLite and PostgreSQL
 - `DATABASE_URL` env var switches between PostgreSQL (production) and SQLite (local dev)
+- Service accounts are **optional** — `/api/integrations/*` works with project API keys alone, service accounts add sync capabilities
+- `/api/integrations/*` aggregates from both project API keys (`/v1/`, read-only) and service accounts (`/ui/v1/`, syncable)
+- Integrations from the same project API key appearing via multiple projects are deduplicated by UUID
+- Service account sessions are managed in-memory with automatic token rotation (devise_token_auth) and re-auth on 401
