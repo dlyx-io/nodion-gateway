@@ -93,8 +93,8 @@ async function fetchAndBuildCache(apiKey: {
 
       if (!res.ok) return { slug, integrations: [] as NodionIntegration[] };
 
-      const body = await res.json() as { data?: NodionIntegration[] };
-      const list = body.data ?? (body as unknown as NodionIntegration[]);
+      const body = await res.json() as { integrations?: NodionIntegration[]; data?: NodionIntegration[] };
+      const list = body.integrations ?? body.data ?? (body as unknown as NodionIntegration[]);
       return {
         slug,
         apiKey: project.nodionApiKeyEncrypted,
@@ -145,8 +145,8 @@ async function fetchAndBuildCache(apiKey: {
       const res = await fetchWithSession(account.id, '/integrations', 'GET');
       if (!res.ok) return { account, integrations: [] as NodionIntegration[] };
 
-      const body = await res.json() as { data?: NodionIntegration[] };
-      const list = body.data ?? (body as unknown as NodionIntegration[]);
+      const body = await res.json() as { integrations?: NodionIntegration[]; data?: NodionIntegration[] };
+      const list = body.integrations ?? body.data ?? (body as unknown as NodionIntegration[]);
       return {
         account,
         integrations: Array.isArray(list) ? list : [],
